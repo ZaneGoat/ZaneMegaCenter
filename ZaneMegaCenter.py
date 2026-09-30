@@ -16,6 +16,20 @@ import re
 import collections
 import tkinter as tk
 
+import socket
+
+# --- Single Instance Lock ---
+def enforce_single_instance():
+    try:
+        global _single_instance_socket
+        _single_instance_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        _single_instance_socket.bind('\0zanemegacenter_lock')
+    except socket.error:
+        print("Zane Mega Center is already running. Exiting.")
+        sys.exit(0)
+
+enforce_single_instance()
+
 # --- Virtual Environment Bootstrap ---
 VENV_DIR = Path.home() / ".local" / "share" / "zanemegacenter" / "venv"
 VENV_PYTHON = VENV_DIR / "bin" / "python3"
