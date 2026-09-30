@@ -15,6 +15,7 @@ import time
 import re
 import collections
 import tkinter as tk
+import webbrowser
 
 import socket
 
@@ -161,6 +162,14 @@ class ZaneMegaApp(ctk.CTk):
         self.current_battery_limit = None
         self.monitoring = True
 
+        # Controller Space integration
+        self.controller_process = None
+        self.controller_space_dir = Path.home() / "Desktop" / "Controler space"
+        if not self.controller_space_dir.exists():
+            self.controller_space_dir = Path.home() / "controller-dashboard"
+        self.controller_start_script = self.controller_space_dir / "start.sh"
+        self.controller_repo_url = "https://github.com/ZaneGoat/Controler-space"
+
         self._build_header()
         self._build_tabview()
         self._build_statusbar()
@@ -189,6 +198,19 @@ class ZaneMegaApp(ctk.CTk):
         model_lbl = ctk.CTkLabel(right_frame, text=f"DEVICE: {MODEL_NAME}", font=("Helvetica", 11, "bold"), text_color=TEXT_MUTED)
         model_lbl.pack(side="right")
 
+        self.hdr_ctrl_btn = ctk.CTkButton(
+            right_frame,
+            text="🎮 CONTROLLER SPACE",
+            font=("Helvetica", 11, "bold"),
+            fg_color=RED_CRIMSON,
+            hover_color=RED_PRIMARY,
+            text_color=TEXT_MAIN,
+            height=30,
+            corner_radius=6,
+            command=self.launch_controller_space
+        )
+        self.hdr_ctrl_btn.pack(side="right", padx=(0, 15))
+
     # ── Tabs ─────────────────────────────────────────────────────────────────
     def _build_tabview(self):
         self.tabview = ctk.CTkTabview(
@@ -204,9 +226,11 @@ class ZaneMegaApp(ctk.CTk):
         self.tabview.pack(fill="both", expand=True, padx=15, pady=(5, 0))
 
         self.tab_hw = self.tabview.add("  HARDWARE & POWER  ")
+        self.tab_ctrl = self.tabview.add("  🎮 CONTROLLER SPACE  ")
         self.tab_clean = self.tabview.add("  SYSTEM CLEANER  ")
 
         self.setup_hw_tab()
+        self.setup_controller_tab()
         self.setup_cleaner_tab()
 
     # ── Status Bar ───────────────────────────────────────────────────────────
@@ -431,6 +455,26 @@ class ZaneMegaApp(ctk.CTk):
             command=lambda: self.set_battery_limit(100)
         )
         self.bat_btn_100.grid(row=0, column=2, padx=2, sticky="ew")
+
+        # Quick Controller Space Launcher in Hardware Tab
+        ctrl_quick_card = ctk.CTkFrame(bat_card, fg_color=BG_CARD, border_color=BORDER_DARK, border_width=1, corner_radius=6)
+        ctrl_quick_card.pack(fill="x", padx=12, pady=(4, 10))
+        ctrl_quick_card.grid_columnconfigure(0, weight=1)
+        ctrl_quick_card.grid_columnconfigure(1, weight=0)
+
+        q_info = ctk.CTkFrame(ctrl_quick_card, fg_color="transparent")
+        q_info.grid(row=0, column=0, padx=10, pady=6, sticky="w")
+
+        ctk.CTkLabel(q_info, text="🎮 CONTROLLER SPACE", font=("Helvetica", 11, "bold"), text_color=RED_PRIMARY).pack(anchor="w")
+        ctk.CTkLabel(q_info, text="Launch start.sh • Telemetry & LEDs", font=("Helvetica", 9), text_color=TEXT_MUTED).pack(anchor="w")
+
+        ctk.CTkButton(
+            ctrl_quick_card, text="🚀 START",
+            font=("Helvetica", 11, "bold"),
+            fg_color=RED_PRIMARY, hover_color=RED_BRIGHT, text_color=TEXT_MAIN,
+            height=30, width=90, corner_radius=6,
+            command=self.launch_controller_space
+        ).grid(row=0, column=1, padx=10, pady=6)
 
     # ═════════════════════════════════════════════════════════════════════════
     #  TAB 2: SYSTEM CLEANER
@@ -828,6 +872,289 @@ class ZaneMegaApp(ctk.CTk):
             else:
                 self.after(0, lambda: self.set_battery_limit(100, update_hardware=False))
         threading.Thread(target=task, daemon=True).start()
+
+    # ═════════════════════════════════════════════════════════════════════════
+    #  TAB: CONTROLLER SPACE (STARSHIP FLIGHT DECK)
+    # ═════════════════════════════════════════════════════════════════════════
+    def setup_controller_tab(self):
+        self.tab_ctrl.grid_columnconfigure(0, weight=1)
+        self.tab_ctrl.grid_rowconfigure(0, weight=0)  # Top Hero Header
+        self.tab_ctrl.grid_rowconfigure(1, weight=0)  # Action & Links Card
+        self.tab_ctrl.grid_rowconfigure(2, weight=1)  # Terminal Output
+
+        # 1. Hero / Header Card
+        hero_card = ctk.CTkFrame(self.tab_ctrl, fg_color=BG_PANEL, border_color=BORDER_DARK, border_width=1, corner_radius=8)
+        hero_card.grid(row=0, column=0, padx=10, pady=(5, 8), sticky="ew")
+
+        hero_left = ctk.CTkFrame(hero_card, fg_color="transparent")
+        hero_left.pack(side="left", padx=15, pady=12)
+
+        ctk.CTkLabel(
+            hero_left, text="🛸 CONTROLLER SPACE // STARSHIP FLIGHT DECK",
+            font=("Helvetica", 15, "bold"), text_color=RED_PRIMARY
+        ).pack(anchor="w")
+
+        ctk.CTkLabel(
+            hero_left,
+            text="PS4 DualShock 4 & Gamepad Telemetry • 1000Hz Polling Matrix • Capacitive Touchpad • Haptics & LEDs",
+            font=("Helvetica", 10), text_color=TEXT_MUTED
+        ).pack(anchor="w", pady=(2, 0))
+
+        ctk.CTkLabel(
+            hero_left,
+            text=f"Target: {self.controller_start_script}",
+            font=("Monospace", 9), text_color="#aa6666"
+        ).pack(anchor="w", pady=(2, 0))
+
+        hero_right = ctk.CTkFrame(hero_card, fg_color="transparent")
+        hero_right.pack(side="right", padx=15, pady=12)
+
+        self.ctrl_status_badge = ctk.CTkLabel(
+            hero_right, text="● OFFLINE", font=("Helvetica", 12, "bold"),
+            text_color=TEXT_MUTED, fg_color=BG_CARD, corner_radius=6, padx=14, pady=6
+        )
+        self.ctrl_status_badge.pack(side="right")
+
+        # 2. Main Action Controls & Links Card
+        action_card = ctk.CTkFrame(self.tab_ctrl, fg_color=BG_PANEL, border_color=BORDER_DARK, border_width=1, corner_radius=8)
+        action_card.grid(row=1, column=0, padx=10, pady=(0, 8), sticky="ew")
+
+        act_title = ctk.CTkLabel(action_card, text="HARDWARE MATRIX CONTROLS & SHORTCUTS", font=("Helvetica", 12, "bold"), text_color=TEXT_MAIN)
+        act_title.pack(anchor="w", padx=15, pady=(10, 6))
+
+        # Main Button Row
+        btn_row = ctk.CTkFrame(action_card, fg_color="transparent")
+        btn_row.pack(fill="x", padx=12, pady=(0, 8))
+        btn_row.grid_columnconfigure(0, weight=3)
+        btn_row.grid_columnconfigure(1, weight=1)
+        btn_row.grid_columnconfigure(2, weight=1)
+
+        self.btn_ctrl_launch = ctk.CTkButton(
+            btn_row, text="🚀 START CONTROLLER SPACE (start.sh)",
+            font=("Helvetica", 13, "bold"),
+            fg_color=RED_PRIMARY, hover_color=RED_BRIGHT, text_color=TEXT_MAIN,
+            height=46, corner_radius=6,
+            command=self.launch_controller_space
+        )
+        self.btn_ctrl_launch.grid(row=0, column=0, padx=(0, 6), sticky="ew")
+
+        self.btn_ctrl_stop = ctk.CTkButton(
+            btn_row, text="🛑 STOP",
+            font=("Helvetica", 12, "bold"),
+            fg_color=BG_CARD, hover_color=RED_CRIMSON, text_color=TEXT_MAIN,
+            border_color=BORDER_DARK, border_width=1,
+            height=46, corner_radius=6,
+            command=self.stop_controller_space
+        )
+        self.btn_ctrl_stop.grid(row=0, column=1, padx=3, sticky="ew")
+
+        self.btn_ctrl_restart = ctk.CTkButton(
+            btn_row, text="🔄 RESTART",
+            font=("Helvetica", 12, "bold"),
+            fg_color=BG_CARD, hover_color=BG_ELEVATED, text_color=TEXT_MAIN,
+            border_color=BORDER_DARK, border_width=1,
+            height=46, corner_radius=6,
+            command=self.restart_controller_space
+        )
+        self.btn_ctrl_restart.grid(row=0, column=2, padx=(6, 0), sticky="ew")
+
+        # Links & Subsystem Launchers Row
+        link_row = ctk.CTkFrame(action_card, fg_color="transparent")
+        link_row.pack(fill="x", padx=12, pady=(0, 12))
+        link_row.grid_columnconfigure((0, 1, 2), weight=1)
+
+        # Link to GitHub
+        ctk.CTkButton(
+            link_row, text="🌐 GitHub: ZaneGoat/Controler-space",
+            font=("Helvetica", 11),
+            fg_color=BG_CARD, hover_color=RED_SUBTLE, text_color=TEXT_MAIN,
+            border_color=BORDER_DARK, border_width=1,
+            height=34, corner_radius=6,
+            command=self.open_controller_space_link
+        ).grid(row=0, column=0, padx=(0, 4), sticky="ew")
+
+        # Link to Local Folder
+        ctk.CTkButton(
+            link_row, text="📂 Open Controler Space Folder",
+            font=("Helvetica", 11),
+            fg_color=BG_CARD, hover_color=RED_SUBTLE, text_color=TEXT_MAIN,
+            border_color=BORDER_DARK, border_width=1,
+            height=34, corner_radius=6,
+            command=self.open_controller_space_folder
+        ).grid(row=0, column=1, padx=3, sticky="ew")
+
+        # Standalone LED & Rumble Matrix
+        ctk.CTkButton(
+            link_row, text="💡 Launch LED & Rumble Window",
+            font=("Helvetica", 11),
+            fg_color=BG_CARD, hover_color=RED_SUBTLE, text_color=TEXT_MAIN,
+            border_color=BORDER_DARK, border_width=1,
+            height=34, corner_radius=6,
+            command=self.launch_controller_led
+        ).grid(row=0, column=2, padx=(4, 0), sticky="ew")
+
+        # 3. Execution Log / Terminal Output Card
+        ctrl_log_card = ctk.CTkFrame(self.tab_ctrl, fg_color=BG_PANEL, border_color=BORDER_DARK, border_width=1, corner_radius=8)
+        ctrl_log_card.grid(row=2, column=0, padx=10, pady=(0, 5), sticky="nsew")
+
+        c_hdr = ctk.CTkFrame(ctrl_log_card, fg_color="transparent")
+        c_hdr.pack(fill="x", padx=15, pady=(8, 4))
+
+        ctk.CTkLabel(c_hdr, text="CONTROLLER SPACE // CONSOLE & RUNTIME TELEMETRY", font=("Helvetica", 11, "bold"), text_color=TEXT_MAIN).pack(side="left")
+
+        ctk.CTkButton(
+            c_hdr, text="Clear Log", font=("Helvetica", 10),
+            fg_color=BG_CARD, hover_color=BG_ELEVATED, text_color=TEXT_MUTED,
+            border_color=BORDER_DARK, border_width=1, height=22, width=70, corner_radius=4,
+            command=self.clear_ctrl_log
+        ).pack(side="right")
+
+        self.ctrl_log_box = ctk.CTkTextbox(
+            ctrl_log_card,
+            font=("Monospace", 11),
+            fg_color="#080808",
+            text_color="#e0e0e0",
+            border_color=BORDER_DARK,
+            border_width=1,
+            corner_radius=6
+        )
+        self.ctrl_log_box.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        self.ctrl_log_box.configure(state="normal")
+        self.ctrl_log_box.insert("end", f"[*] Controller Space initialized.\n[*] Target Directory: {self.controller_space_dir}\n[*] Target Launcher: {self.controller_start_script}\n[*] Ready to launch Starship Cockpit.\n")
+        self.ctrl_log_box.configure(state="disabled")
+
+    # ── Controller Space Actions ──────────────────────────────────────────────
+    def ctrl_log(self, msg):
+        if hasattr(self, "ctrl_log_box") and self.ctrl_log_box.winfo_exists():
+            self.ctrl_log_box.configure(state="normal")
+            self.ctrl_log_box.insert("end", msg + "\n")
+            self.ctrl_log_box.see("end")
+            self.ctrl_log_box.configure(state="disabled")
+
+    def clear_ctrl_log(self):
+        if hasattr(self, "ctrl_log_box") and self.ctrl_log_box.winfo_exists():
+            self.ctrl_log_box.configure(state="normal")
+            self.ctrl_log_box.delete("1.0", "end")
+            self.ctrl_log_box.configure(state="disabled")
+
+    def launch_controller_space(self):
+        if self.controller_process and self.controller_process.poll() is None:
+            self.set_status(f"🎮 Controller Space already active (PID: {self.controller_process.pid})", GREEN_OK)
+            self.ctrl_log(f"[!] Controller Space is already running with PID {self.controller_process.pid}.")
+            return
+
+        if not self.controller_start_script.exists():
+            err_msg = f"start.sh not found at {self.controller_start_script}"
+            self.set_status(f"❌ {err_msg}", RED_BRIGHT)
+            self.ctrl_log(f"[ERR] {err_msg}")
+            return
+
+        try:
+            os.chmod(self.controller_start_script, 0o755)
+        except Exception:
+            pass
+
+        self.set_status("🚀 Launching Controller Space (start.sh)...", RED_PRIMARY)
+        self.ctrl_log(f"[*] Executing: {self.controller_start_script}...")
+
+        env = os.environ.copy()
+        env.pop("VIRTUAL_ENV", None)
+        if "DISPLAY" not in env:
+            env["DISPLAY"] = ":1"
+        system_paths = ["/usr/local/bin", "/usr/bin", "/bin"]
+        current_path = env.get("PATH", "")
+        env["PATH"] = ":".join(system_paths + [p for p in current_path.split(":") if p not in system_paths])
+
+        try:
+            self.controller_process = subprocess.Popen(
+                ["/usr/bin/env", "bash", str(self.controller_start_script)],
+                cwd=str(self.controller_space_dir),
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1
+            )
+            pid = self.controller_process.pid
+            self.ctrl_log(f"[✓] Controller Space started with PID: {pid}")
+            self.set_status(f"🎮 Controller Space running (PID: {pid})", GREEN_OK)
+
+            if hasattr(self, "ctrl_status_badge"):
+                self.ctrl_status_badge.configure(text=f"● RUNNING (PID {pid})", text_color=GREEN_OK)
+            if hasattr(self, "btn_ctrl_launch"):
+                self.btn_ctrl_launch.configure(text="🟢 CONTROLLER SPACE ACTIVE (RUNNING)", fg_color="#1b5e20", hover_color="#2e7d32")
+            if hasattr(self, "hdr_ctrl_btn"):
+                self.hdr_ctrl_btn.configure(text=f"🎮 CONTROLLER [PID {pid}]", fg_color="#1b5e20")
+
+            def stream_out():
+                for line in iter(self.controller_process.stdout.readline, ''):
+                    if not line:
+                        break
+                    clean_line = line.rstrip()
+                    self.after(0, self.ctrl_log, clean_line)
+                self.controller_process.stdout.close()
+                rc = self.controller_process.wait()
+                self.after(0, self._on_controller_exit, rc)
+
+            threading.Thread(target=stream_out, daemon=True).start()
+
+            subprocess.run(["notify-send", "Zane Control Center", f"🎮 Controller Space launched (PID: {pid})"])
+        except Exception as e:
+            self.ctrl_log(f"[ERR] Failed to launch Controller Space: {str(e)}")
+            self.set_status(f"Failed to launch Controller Space: {str(e)}", RED_BRIGHT)
+
+    def _on_controller_exit(self, rc):
+        self.ctrl_log(f"[*] Controller Space process terminated with code {rc}.")
+        self.set_status("Controller Space closed", TEXT_MUTED)
+        if hasattr(self, "ctrl_status_badge"):
+            self.ctrl_status_badge.configure(text="● OFFLINE", text_color=TEXT_MUTED)
+        if hasattr(self, "btn_ctrl_launch"):
+            self.btn_ctrl_launch.configure(text="🚀 START CONTROLLER SPACE (start.sh)", fg_color=RED_PRIMARY, hover_color=RED_BRIGHT)
+        if hasattr(self, "hdr_ctrl_btn"):
+            self.hdr_ctrl_btn.configure(text="🎮 CONTROLLER SPACE", fg_color=RED_CRIMSON)
+
+    def stop_controller_space(self):
+        if self.controller_process and self.controller_process.poll() is None:
+            self.ctrl_log("[*] Terminating Controller Space process...")
+            self.controller_process.terminate()
+            self.set_status("Stopping Controller Space...", RED_PRIMARY)
+        else:
+            self.ctrl_log("[!] Controller Space is not currently running.")
+            self.set_status("Controller Space is not running", TEXT_MUTED)
+
+    def restart_controller_space(self):
+        self.ctrl_log("[*] Restarting Controller Space...")
+        if self.controller_process and self.controller_process.poll() is None:
+            self.controller_process.terminate()
+            try:
+                self.controller_process.wait(timeout=2)
+            except Exception:
+                self.controller_process.kill()
+        self.after(500, self.launch_controller_space)
+
+    def open_controller_space_folder(self):
+        self.ctrl_log(f"[*] Opening folder: {self.controller_space_dir}")
+        subprocess.Popen(["xdg-open", str(self.controller_space_dir)])
+        self.set_status(f"Opened {self.controller_space_dir.name}", GREEN_OK)
+
+    def open_controller_space_link(self):
+        self.ctrl_log(f"[*] Opening repository link: {self.controller_repo_url}")
+        webbrowser.open(self.controller_repo_url)
+        self.set_status("Opened Controller Space GitHub repository", GREEN_OK)
+
+    def launch_controller_led(self):
+        led_script = self.controller_space_dir / "led.py"
+        if not led_script.exists():
+            self.ctrl_log(f"[ERR] led.py not found at {led_script}")
+            return
+        self.ctrl_log("[*] Launching standalone LED & Rumble matrix...")
+        env = os.environ.copy()
+        env.pop("VIRTUAL_ENV", None)
+        system_paths = ["/usr/local/bin", "/usr/bin", "/bin"]
+        current_path = env.get("PATH", "")
+        env["PATH"] = ":".join(system_paths + [p for p in current_path.split(":") if p not in system_paths])
+        subprocess.Popen(["/usr/bin/python3", str(led_script)], cwd=str(self.controller_space_dir), env=env)
+        self.set_status("Launched standalone LED & Rumble window", GREEN_OK)
 
 if __name__ == "__main__":
     app = ZaneMegaApp()
