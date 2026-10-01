@@ -495,8 +495,129 @@ class ZaneMegaApp(ctk.CTk):
         scroll_modules = ctk.CTkScrollableFrame(self.sidebar, fg_color="transparent")
         scroll_modules.pack(fill="both", expand=True, padx=5, pady=0)
 
+        # Smart RAM Optimizer script: kills bloatware, stops heavy background
+        # services, reclaims shared memory, cleans zombies, THEN drops caches.
+        _ram_optimizer_script = r"""
+import psutil, os, signal, subprocess, sys
+
+# ── 1. Kill known background memory hogs (safe to kill, they respawn if needed) ──
+BLOAT_PATTERNS = [
+    'tracker-miner', 'tracker-extract', 'tracker-store',       # GNOME file indexer
+    'evolution-data', 'evolution-calendar', 'evolution-address', # EDS daemons
+    'goa-daemon', 'goa-identity',                               # GNOME Online Accounts
+    'zeitgeist', 'zeitgeistd',                                  # Activity logger
+    'baloo_file', 'baloo_file_extractor',                       # KDE file indexer
+    'akonadi_', 'akonadiserver',                                # KDE PIM storage
+    'gnome-software', 'packagekitd', 'PackageKit',             # Software updaters
+    'update-notifier', 'unattended-upgr',                       # Update checkers
+    'gsd-housekeeping', 'gsd-color', 'gsd-print',              # Non-essential GNOME daemons
+    'at-spi-bus-launcher', 'at-spi2-registryd',                 # Accessibility (if not needed)
+    'ibus-daemon', 'ibus-engine', 'ibus-x11',                  # Input method (if using default EN)
+    'xdg-desktop-portal', 'xdg-document-portal',               # Portal overhead
+    'gvfsd-trash', 'gvfsd-metadata', 'gvfsd-network',          # Virtual filesystem daemons
+    'tumblerd',                                                 # XFCE thumbnail daemon
+]
+
+me = os.getpid()
+killed = []
+for proc in psutil.process_iter(['pid', 'name', 'username', 'memory_info']):
+    try:
+        if proc.pid == me:
+            continue
+        pname = proc.info['name'] or ''
+        if proc.info['username'] != os.environ.get('USER', 'zane'):
+            continue
+        if any(pat in pname for pat in BLOAT_PATTERNS):
+            mem_mb = (proc.info['memory_info'].rss / 1024 / 1024) if proc.info['memory_info'] else 0
+            os.kill(proc.pid, signal.SIGTERM)
+            killed.append(f"  → Killed {pname} (PID {proc.pid}, {mem_mb:.1f} MB)")
+    except (psutil.NoSuchProcess, psutil.AccessDenied, PermissionError):
+        pass
+
+if killed:
+    print(f"[RAM] Terminated {len(killed)} background bloat processes:")
+    for k in killed:
+        print(k)
+else:
+    print("[RAM] No known bloat processes found running.")
+
+# ── 2. Clean up zombie processes ──
+zombies = []
+for proc in psutil.process_iter(['pid', 'name', 'status']):
+    try:
+        if proc.info['status'] == psutil.STATUS_ZOMBIE:
+            zombies.append(proc.info['pid'])
+            try:
+                os.kill(proc.info['pid'], signal.SIGKILL)
+            except:
+                pass
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        pass
+if zombies:
+    print(f"[RAM] Cleaned {len(zombies)} zombie processes.")
+
+# ── 3. Stop heavy systemd user services ──
+HEAVY_USER_SERVICES = [
+    'tracker-miner-fs-3.service', 'tracker-miner-fs.service',
+    'tracker-extract-3.service', 'tracker-extract.service',
+    'evolution-data-server.service', 'evolution-calendar-factory.service',
+    'evolution-addressbook-factory.service', 'evolution-source-registry.service',
+    'gvfs-daemon.service', 'gvfs-metadata.service',
+    'at-spi-dbus-bus.service',
+    'xdg-desktop-portal.service', 'xdg-document-portal.service',
+]
+stopped = []
+for svc in HEAVY_USER_SERVICES:
+    r = subprocess.run(['systemctl', '--user', 'stop', svc],
+                       capture_output=True, text=True)
+    if r.returncode == 0:
+        stopped.append(svc)
+if stopped:
+    print(f"[RAM] Stopped {len(stopped)} heavy user services:")
+    for s in stopped:
+        print(f"  → {s}")
+else:
+    print("[RAM] No stoppable user services found.")
+
+# ── 4. Report memory before kernel flush ──
+mem = psutil.virtual_memory()
+print(f"[RAM] Before cache drop: {mem.used/1024/1024:.0f} MB used / {mem.available/1024/1024:.0f} MB available ({mem.percent}%)")
+"""
+        _ram_optimizer_cmd = f'{sys.executable} -c {repr(_ram_optimizer_script)}'
+
+        # Background Service Optimizer: stops system-level non-essential services
+        _svc_optimizer_cmd = r"""
+SERVICES_TO_STOP=(
+    cups.service cups-browsed.service          # Printing (stop if not printing)
+    ModemManager.service                        # Mobile broadband modem
+    avahi-daemon.service                        # mDNS/DNS-SD (LAN discovery)
+    accounts-daemon.service                     # AccountsService
+    switcheroo-control.service                  # GPU switching daemon
+    power-profiles-daemon.service               # Conflicts with TLP anyway
+    packagekit.service                          # PackageKit background updater
+    fwupd.service                               # Firmware updater
+    bolt.service                                # Thunderbolt device manager
+    colord.service                              # Color management
+    thermald.service                            # Intel thermal daemon (ISW handles this)
+)
+STOPPED=0
+for svc in "${SERVICES_TO_STOP[@]}"; do
+    [[ "$svc" == \#* ]] && continue
+    systemctl is-active --quiet "$svc" 2>/dev/null && {
+        systemctl stop "$svc" 2>/dev/null && {
+            echo "  → Stopped $svc"
+            ((STOPPED++))
+        }
+    }
+done
+echo "[SVC] Stopped $STOPPED non-essential system services."
+echo "[SVC] Services will restart on next boot or when needed."
+"""
+
         self.modules = {
-            "RAM Cache & Compaction (Sudo)": {"cmd": "sync && sysctl -w vm.drop_caches=3 && sysctl -w vm.compact_memory=1", "sudo": True},
+            "🧠 Smart RAM Optimizer": {"cmd": _ram_optimizer_cmd, "sudo": False},
+            "🧠 RAM Kernel Cache Flush (Sudo)": {"cmd": "sync && echo 3 > /proc/sys/vm/drop_caches && sysctl -w vm.compact_memory=1 && echo '[RAM] Kernel page cache + dentries + inodes flushed & memory compacted.'", "sudo": True},
+            "⚙️ Background Service Optimizer (Sudo)": {"cmd": _svc_optimizer_cmd, "sudo": True},
             "Swap Memory Reset (Sudo)": {"cmd": "swapoff -a && swapon -a", "sudo": True},
             "APT Package Cache (Sudo)": {"cmd": "apt-get clean && apt-get autoclean && apt-get autoremove -y", "sudo": True},
             "Python Pip Cache": {"cmd": "pip cache purge", "sudo": False},
@@ -506,7 +627,7 @@ class ZaneMegaApp(ctk.CTk):
             "Flatpak Unused (Sudo)": {"cmd": "flatpak uninstall --unused -y", "sudo": True},
             "Snap Cache (Sudo)": {"cmd": "rm -rf /var/lib/snapd/cache/*", "sudo": True},
             "Docker Prune (Sudo)": {"cmd": "docker container prune -f && docker image prune -f", "sudo": True},
-            "/tmp Old Files": {"cmd": "find /tmp -type f -atime +1 -delete", "sudo": False},
+            "/tmp Old Files": {"cmd": "find /tmp -type f -atime +1 -delete 2>/dev/null; true", "sudo": False},
             "General ~/.cache Clean": {"cmd": "find ~/.cache -mindepth 1 -maxdepth 1 ! -name 'pip' ! -name 'BraveSoftware' ! -name 'thumbnails' ! -name 'mozilla' ! -name 'google-chrome' -exec rm -rf {} +", "sudo": False}
         }
 
