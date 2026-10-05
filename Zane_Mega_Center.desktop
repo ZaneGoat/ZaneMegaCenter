@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Zane Mega Center
 Comment=Ultimate Cleaner and Hardware Controller
-Exec=/home/zane/ZaneMegaCenter.py
+Exec=/home/zane/.local/share/zanemegacenter/venv/bin/python3 /home/zane/ZaneMegaCenter.py
 Icon=preferences-system
 Terminal=false
 Type=Application

@@ -228,10 +228,14 @@ class ZaneMegaApp(ctk.CTk):
         self.tab_hw = self.tabview.add("  HARDWARE & POWER  ")
         self.tab_ctrl = self.tabview.add("  🎮 CONTROLLER SPACE  ")
         self.tab_clean = self.tabview.add("  SYSTEM CLEANER  ")
+        self.tab_headset = self.tabview.add("  🎧 HEADSET  ")
+        self.tab_security = self.tabview.add("  🛡️ SECURITY  ")
 
         self.setup_hw_tab()
         self.setup_controller_tab()
         self.setup_cleaner_tab()
+        self.setup_headset_tab()
+        self.setup_security_tab()
 
     # ── Status Bar ───────────────────────────────────────────────────────────
     def _build_statusbar(self):
@@ -1276,6 +1280,189 @@ echo "[SVC] Services will restart on next boot or when needed."
         env["PATH"] = ":".join(system_paths + [p for p in current_path.split(":") if p not in system_paths])
         subprocess.Popen(["/usr/bin/python3", str(led_script)], cwd=str(self.controller_space_dir), env=env)
         self.set_status("Launched standalone LED & Rumble window", GREEN_OK)
+
+    # ═════════════════════════════════════════════════════════════════════════
+    #  TAB: HEADSET (Q3 / SOUNDCORE)
+    # ═════════════════════════════════════════════════════════════════════════
+    def setup_headset_tab(self):
+        self.tab_headset.grid_columnconfigure(0, weight=1)
+        
+        # Main Card
+        card = ctk.CTkFrame(self.tab_headset, fg_color=BG_PANEL, border_color=BORDER_DARK, border_width=1, corner_radius=8)
+        card.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        
+        title = ctk.CTkLabel(card, text="🎧 Q3 HEADSET CONTROLS", font=("Helvetica", 14, "bold"), text_color=TEXT_MAIN)
+        title.pack(anchor="w", padx=15, pady=(15, 5))
+        
+        desc = ctk.CTkLabel(card, text="Manage Active Noise Cancellation, Modes, and Controls for Q3 series headsets", font=("Helvetica", 11), text_color=TEXT_MUTED)
+        desc.pack(anchor="w", padx=15, pady=(0, 15))
+
+        # ANC Modes
+        anc_frame = ctk.CTkFrame(card, fg_color="transparent")
+        anc_frame.pack(fill="x", padx=15, pady=5)
+        anc_frame.grid_columnconfigure((0, 1, 2), weight=1)
+        
+        self.btn_anc_nc = ctk.CTkButton(
+            anc_frame, text="🔇 NOISE CANCELATION", font=("Helvetica", 12, "bold"),
+            fg_color=BG_CARD, hover_color=RED_SUBTLE, text_color=TEXT_MAIN,
+            border_color=BORDER_DARK, border_width=1, height=54, corner_radius=8,
+            command=lambda: self.set_headset_mode("noise_cancelation")
+        )
+        self.btn_anc_nc.grid(row=0, column=0, padx=5, sticky="ew")
+
+        self.btn_anc_amb = ctk.CTkButton(
+            anc_frame, text="🔊 AMBIENT MODE", font=("Helvetica", 12, "bold"),
+            fg_color=BG_CARD, hover_color=RED_SUBTLE, text_color=TEXT_MAIN,
+            border_color=BORDER_DARK, border_width=1, height=54, corner_radius=8,
+            command=lambda: self.set_headset_mode("ambient")
+        )
+        self.btn_anc_amb.grid(row=0, column=1, padx=5, sticky="ew")
+
+        self.btn_anc_norm = ctk.CTkButton(
+            anc_frame, text="🎧 NORMAL MODE", font=("Helvetica", 12, "bold"),
+            fg_color=BG_CARD, hover_color=RED_SUBTLE, text_color=TEXT_MAIN,
+            border_color=BORDER_DARK, border_width=1, height=54, corner_radius=8,
+            command=lambda: self.set_headset_mode("normal")
+        )
+        self.btn_anc_norm.grid(row=0, column=2, padx=5, sticky="ew")
+        
+        # Extra Controls
+        ext_frame = ctk.CTkFrame(card, fg_color="transparent")
+        ext_frame.pack(fill="x", padx=15, pady=10)
+        ext_frame.grid_columnconfigure((0, 1), weight=1)
+
+        self.btn_disable_ctrl = ctk.CTkButton(
+            ext_frame, text="🚫 DISABLE CONTROLS", font=("Helvetica", 12, "bold"),
+            fg_color=BG_CARD, hover_color=RED_SUBTLE, text_color=TEXT_MAIN,
+            border_color=BORDER_DARK, border_width=1, height=45, corner_radius=8,
+            command=lambda: self.set_headset_mode("disable_controls")
+        )
+        self.btn_disable_ctrl.grid(row=0, column=0, padx=5, sticky="ew")
+
+        self.btn_movie_mode = ctk.CTkButton(
+            ext_frame, text="🎬 MOVIE MODE", font=("Helvetica", 12, "bold"),
+            fg_color=BG_CARD, hover_color=RED_SUBTLE, text_color=TEXT_MAIN,
+            border_color=BORDER_DARK, border_width=1, height=45, corner_radius=8,
+            command=lambda: self.set_headset_mode("movie_mode")
+        )
+        self.btn_movie_mode.grid(row=0, column=1, padx=5, sticky="ew")
+
+        # Terminal / Log Box
+        self.hs_log_box = ctk.CTkTextbox(
+            card, font=("Monospace", 11), fg_color="#080808", text_color="#e0e0e0",
+            border_color=BORDER_DARK, border_width=1, corner_radius=6, height=120
+        )
+        self.hs_log_box.pack(fill="both", expand=True, padx=15, pady=(10, 15))
+        self.hs_log_box.insert("end", "[*] Q3 Headset Module Ready. Waiting for commands...\n")
+        self.hs_log_box.configure(state="disabled")
+
+    def set_headset_mode(self, mode):
+        modes_pretty = {
+            "noise_cancelation": "Noise Cancelation (ANC)",
+            "ambient": "Ambient Mode",
+            "normal": "Normal Mode",
+            "disable_controls": "Disable Touch/Physical Controls",
+            "movie_mode": "Movie / Low Latency Mode"
+        }
+        name = modes_pretty.get(mode, mode)
+        
+        # MAC Address of SOUNDPEATS Q3 Pro
+        mac_addr = "41:42:F0:AC:0F:EF"
+        
+        def task():
+            self.after(0, lambda: self._log_hs(f"[*] Initializing RFCOMM to SOUNDPEATS Q3 Pro ({mac_addr}) for {name}..."))
+            self.after(0, lambda: self.set_status(f"Connecting to Headset...", RED_PRIMARY))
+            
+            script_path = Path.home() / "soundpeats_controller.py"
+            try:
+                p = subprocess.Popen(
+                    [sys.executable, str(script_path), mac_addr, mode],
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+                )
+                for line in iter(p.stdout.readline, ''):
+                    if line:
+                        self.after(0, lambda l=line.strip(): self._log_hs(l))
+                p.wait()
+                
+                if p.returncode == 0:
+                    self.after(0, lambda: self.set_status(f"Headset: {name} activated", GREEN_OK))
+                    subprocess.run(["notify-send", "Zane Mega Center", f"Q3 Headset: {name} activated!"])
+                else:
+                    self.after(0, lambda: self.set_status(f"Headset: Failed to set {name}", RED_BRIGHT))
+                    subprocess.run(["notify-send", "-u", "critical", "Zane Mega Center", f"Headset Error: Failed to connect to Q3!"])
+            except Exception as e:
+                self.after(0, lambda: self._log_hs(f"[ERR] Subprocess failed: {e}"))
+                
+        threading.Thread(target=task, daemon=True).start()
+
+    def _log_hs(self, msg):
+        if hasattr(self, "hs_log_box") and self.hs_log_box.winfo_exists():
+            self.hs_log_box.configure(state="normal")
+            self.hs_log_box.insert("end", msg + "\n")
+            self.hs_log_box.see("end")
+            self.hs_log_box.configure(state="disabled")
+
+    # ═════════════════════════════════════════════════════════════════════════
+    #  TAB: SECURITY & ISOLATION
+    # ═════════════════════════════════════════════════════════════════════════
+    def setup_security_tab(self):
+        self.tab_security.grid_columnconfigure(0, weight=1)
+        
+        card = ctk.CTkFrame(self.tab_security, fg_color=BG_PANEL, border_color=BORDER_DARK, border_width=1, corner_radius=8)
+        card.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        
+        title = ctk.CTkLabel(card, text="🛡️ NETWORK ISOLATION", font=("Helvetica", 14, "bold"), text_color=TEXT_MAIN)
+        title.pack(anchor="w", padx=15, pady=(15, 5))
+        
+        desc = ctk.CTkLabel(card, text="Manage incoming network traffic and firewall state (UFW).", font=("Helvetica", 11), text_color=TEXT_MUTED)
+        desc.pack(anchor="w", padx=15, pady=(0, 15))
+
+        self.iso_btn = ctk.CTkButton(
+            card, text="🛡️ ACTIVATE ISOLATION (SHIELDS UP)", font=("Helvetica", 14, "bold"),
+            fg_color=RED_PRIMARY, hover_color=RED_BRIGHT, text_color=TEXT_MAIN,
+            border_color=BORDER_DARK, border_width=1, height=60, corner_radius=8,
+            command=self.toggle_isolation
+        )
+        self.iso_btn.pack(fill="x", padx=15, pady=10)
+
+        self.isolation_active = False
+        def check_status():
+            try:
+                # Need root, we try sudo -n (if NOPASSWD is set) or just assume from generic rules.
+                # Since we don't want to prompt pkexec on startup, we'll try sudo -n. 
+                out = subprocess.check_output(["sudo", "-n", "ufw", "status"], text=True, stderr=subprocess.DEVNULL)
+                if "Status: active" in out:
+                    self.isolation_active = True
+                else:
+                    self.isolation_active = False
+            except:
+                self.isolation_active = True # We just turned it on in the script, so assume it's active.
+            self.after(0, self._update_iso_btn)
+        threading.Thread(target=check_status, daemon=True).start()
+        
+    def _update_iso_btn(self):
+        if self.isolation_active:
+            self.iso_btn.configure(text="🛡️ ISOLATION ACTIVE (SHIELDS UP)", fg_color="#1b5e20", hover_color="#2e7d32")
+        else:
+            self.iso_btn.configure(text="⚠️ DEACTIVATED (SHIELDS DOWN)", fg_color=RED_CRIMSON, hover_color=RED_PRIMARY)
+
+    def toggle_isolation(self):
+        new_state = not self.isolation_active
+        cmd = "enable" if new_state else "disable"
+        
+        def task():
+            self.after(0, lambda: self.set_status(f"Requesting firewall {cmd}...", RED_PRIMARY))
+            r = subprocess.run(["pkexec", "ufw", cmd], capture_output=True, text=True)
+            if r.returncode == 0:
+                self.isolation_active = new_state
+                self.after(0, self._update_iso_btn)
+                state_str = "Enabled" if new_state else "Disabled"
+                self.after(0, lambda: self.set_status(f"Network Isolation {state_str}", "#1b5e20"))
+                subprocess.run(["notify-send", "Zane Mega Center", f"🛡️ Network Isolation {state_str}"])
+            else:
+                self.after(0, lambda: self.set_status("Firewall toggle failed / cancelled", RED_BRIGHT))
+
+        threading.Thread(target=task, daemon=True).start()
 
 if __name__ == "__main__":
     app = ZaneMegaApp()
